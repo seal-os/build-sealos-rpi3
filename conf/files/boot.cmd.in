@@ -1,0 +1,41 @@
+fdt addr ${fdt_addr} && fdt get value default_bootargs /chosen bootargs
+
+test -n "${BOOT_ORDER}" || setenv BOOT_ORDER "system0 system1"
+test -n "${BOOT_system0_LEFT}" || setenv BOOT_system0_LEFT 1
+test -n "${BOOT_system1_LEFT}" || setenv BOOT_system1_LEFT 1
+
+setenv bootargs
+for BOOT_SLOT in "${BOOT_ORDER}"; do
+  if test "x${bootargs}" != "x"; then
+    # skip remaining slots
+  elif test "x${BOOT_SLOT}" = "xsystem0"; then
+    if test ${BOOT_A_LEFT} -gt 0; then
+      echo "Found valid slot system0, ${BOOT_system0_LEFT} attempts remaining"
+      setexpr BOOT_system0_LEFT ${BOOT_system0_LEFT} - 1
+      setenv load_kernel "ext4load mmc 0:2 ${kernel_addr_r} /boot/@@KERNEL_IMAGETYPE@@"
+      setenv bootargs "${default_bootargs} root=/dev/mmcblk0p2 rauc.slot=system0"
+    fi
+  elif test "x${BOOT_SLOT}" = "xsystem1"; then
+    if test ${BOOT_system1_LEFT} -gt 0; then
+      echo "Found valid slot system1, ${BOOT_system1_LEFT} attempts remaining"
+      setexpr BOOT_system1_LEFT ${BOOT_system1_LEFT} - 1
+      setenv load_kernel "ext4load mmc 0:3 ${kernel_addr_r} /boot/@@KERNEL_IMAGETYPE@@"
+      setenv bootargs "${default_bootargs} root=/dev/mmcblk0p3 rauc.slot=system1"
+    fi
+  fi
+done
+
+if test -n "${bootargs}"; then
+  saveenv
+else
+  echo "No valid slot found, resetting tries"
+  setenv BOOT_system0_LEFT 1
+  setenv BOOT_system1_LEFT 1
+  saveenv
+  reset
+fi
+
+echo "Loading kernel"
+run load_kernel
+echo " Starting kernel"
+@@KERNEL_BOOTCMD@@ ${kernel_addr_r} - ${fdt_addr}
